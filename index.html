@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Definite Integral Calculator</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Math.js for parsing and evaluating math expressions -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <!-- Chart.js for graphing -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        /* Make sure the canvas stays responsive */
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex items-center justify-center">
+
+    <div class="max-w-4xl w-full bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
+        
+        <!-- Left Panel: Controls -->
+        <div class="w-full md:w-1/3 bg-slate-800 text-white p-6 flex flex-col gap-6">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-400"><path d="M12 3a2 2 0 0 0-2 2v14a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2z"/><path d="M16 8h-2"/><path d="M10 16H8"/></svg>
+                    Integral Calc
+                </h1>
+                <p class="text-slate-400 text-sm mt-2">Find the area under the curve.</p>
+            </div>
+
+            <div class="flex flex-col gap-4">
+                <!-- Function Input -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Function f(x)</label>
+                    <div class="flex items-center bg-slate-700 rounded-lg px-3 py-2 border border-slate-600 focus-within:border-blue-400 transition-colors">
+                        <span class="text-slate-400 italic mr-2">f(x) =</span>
+                        <input type="text" id="funcInput" value="x^2 - 6x + 7" 
+                            class="bg-transparent text-white w-full outline-none font-mono text-sm"
+                            placeholder="e.g. x^2 - 6x + 7">
+                    </div>
+                </div>
+
+                <!-- Boundaries Input -->
+                <div class="flex gap-4">
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-slate-300 mb-1">Lower Bound (a)</label>
+                        <input type="number" id="lowerBound" value="2" 
+                            class="w-full bg-slate-700 text-white rounded-lg px-3 py-2 border border-slate-600 focus:border-blue-400 outline-none transition-colors font-mono">
+                    </div>
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-slate-300 mb-1">Upper Bound (b)</label>
+                        <input type="number" id="upperBound" value="9" 
+                            class="w-full bg-slate-700 text-white rounded-lg px-3 py-2 border border-slate-600 focus:border-blue-400 outline-none transition-colors font-mono">
+                    </div>
+                </div>
+
+                <button onclick="calculateAndGraph()" 
+                    class="mt-2 w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-lg shadow-md transition-colors active:scale-[0.98]">
+                    Calculate
+                </button>
+                
+                <div id="errorMsg" class="text-red-400 text-sm hidden font-medium">
+                    Invalid mathematical expression. Try adding explicit multiplication like '6*x'.
+                </div>
+            </div>
+
+            <div class="mt-auto pt-6 border-t border-slate-700">
+                <h3 class="text-slate-400 text-sm font-medium mb-1">Result:</h3>
+                <div class="text-4xl font-bold text-blue-400 break-words" id="resultDisplay">
+                    --
+                </div>
+                <div class="text-slate-500 text-sm mt-1" id="fractionDisplay"></div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Graph -->
+        <div class="w-full md:w-2/3 p-6 flex flex-col bg-white">
+            <h2 class="text-lg font-semibold text-slate-700 mb-4" id="graphTitle">Graph of f(x)</h2>
+            <div class="chart-container flex-grow">
+                <canvas id="mathChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let myChart = null;
+
+        // Numerical Integration using Simpson's 1/3 Rule
+        function simpsonsRule(compiledFunc, a, b, n = 1000) {
+            // Ensure n is even
+            if (n % 2 !== 0) n++; 
+            
+            const h = (b - a) / n;
+            let sum = compiledFunc.evaluate({x: a}) + compiledFunc.evaluate({x: b});
+
+            for (let i = 1; i < n; i++) {
+                const x = a + i * h;
+                const y = compiledFunc.evaluate({x: x});
+                if (i % 2 === 0) {
+                    sum += 2 * y;
+                } else {
+                    sum += 4 * y;
+                }
+            }
+            return sum * (h / 3);
+        }
+
+        // Convert decimal to closest fraction string (for clean displaying like 175/3)
+        function toFraction(decimal, tolerance = 1.0E-6) {
+            let h1 = 1, h2 = 0, k1 = 0, k2 = 1;
+            let b = decimal;
+            do {
+                let a = Math.floor(b);
+                let aux = h1;
+                h1 = a * h1 + h2;
+                h2 = aux;
+                aux = k1;
+                k1 = a * k1 + k2;
+                k2 = aux;
+                b = 1 / (b - a);
+            } while (Math.abs(decimal - h1 / k1) > decimal * tolerance && k1 < 100000);
+            
+            if (k1 === 1) return ''; // It's a whole number
+            if (k1 > 10000) return ''; // Too complex to be a neat fraction
+            return `${h1} / ${k1}`;
+        }
+
+        function calculateAndGraph() {
+            const funcStr = document.getElementById('funcInput').value;
+            const aStr = document.getElementById('lowerBound').value;
+            const bStr = document.getElementById('upperBound').value;
+            
+            const errorMsg = document.getElementById('errorMsg');
+            const resultDisplay = document.getElementById('resultDisplay');
+            const fractionDisplay = document.getElementById('fractionDisplay');
+            const graphTitle = document.getElementById('graphTitle');
+
+            // Parse bounds
+            const a = parseFloat(aStr);
+            const b = parseFloat(bStr);
+
+            if (isNaN(a) || isNaN(b)) {
+                errorMsg.textContent = "Please enter valid numbers for bounds.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            let compiledFunc;
+            try {
+                // Compile the mathematical expression
+                compiledFunc = math.compile(funcStr);
+                // Test evaluation to ensure it's valid
+                compiledFunc.evaluate({x: 0});
+                errorMsg.classList.add('hidden');
+            } catch (err) {
+                errorMsg.textContent = "Invalid function syntax. e.g. x^2 - 6*x + 7";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            // Calculate Integral
+            const area = simpsonsRule(compiledFunc, a, b);
+            
+            // Format result
+            // Round to 4 decimal places to handle floating point imprecision
+            const roundedArea = Math.round(area * 10000) / 10000;
+            resultDisplay.textContent = roundedArea.toString();
+            
+            // Try to find a neat fraction representation
+            const fraction = toFraction(roundedArea);
+            fractionDisplay.textContent = fraction ? `≈ ${fraction}` : '';
+
+            // Update graph title
+            graphTitle.innerHTML = `Area = <span class="text-blue-600">${roundedArea}</span>`;
+
+            // Prepare Graph Data
+            generateGraph(compiledFunc, a, b, funcStr);
+        }
+
+        function generateGraph(compiledFunc, a, b, funcStr) {
+            const minBound = Math.min(a, b);
+            const maxBound = Math.max(a, b);
+            
+            // Determine viewing window (pad by 20% of range, or at least 2 units)
+            const range = maxBound - minBound;
+            const padding = Math.max(range * 0.2, 2);
+            const xMin = minBound - padding;
+            const xMax = maxBound + padding;
+
+            const resolution = 200; // Number of points in the graph
+            const step = (xMax - xMin) / resolution;
+
+            const labels = [];
+            const functionData = [];
+            const shadedData = [];
+
+            for (let i = 0; i <= resolution; i++) {
+                const x = xMin + (i * step);
+                // Round x to 2 decimal places to avoid ugly labels
+                const roundedX = Math.round(x * 100) / 100;
+                labels.push(roundedX);
+                
+                try {
+                    const y = compiledFunc.evaluate({x: roundedX});
+                    functionData.push(y);
+
+                    // Add to shaded data only if within bounds
+                    if (roundedX >= minBound && roundedX <= maxBound) {
+                        shadedData.push(y);
+                    } else {
+                        shadedData.push(null); // Keeps the area bounded
+                    }
+                } catch(e) {
+                    functionData.push(null);
+                    shadedData.push(null);
+                }
+            }
+
+            // Update Chart
+            const ctx = document.getElementById('mathChart').getContext('2d');
+
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: `f(x) = ${funcStr}`,
+                            data: functionData,
+                            borderColor: '#1e293b', // Slate 800
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.1
+                        },
+                        {
+                            label: `Integral from ${a} to ${b}`,
+                            data: shadedData,
+                            borderColor: 'transparent',
+                            backgroundColor: 'rgba(59, 130, 246, 0.4)', // Blue 500 w/ opacity
+                            fill: 'origin', // Fills down to the x-axis (y=0)
+                            pointRadius: 0,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `y = ${Math.round(context.parsed.y * 100) / 100}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: {
+                                display: true,
+                                text: 'x axis'
+                            },
+                            grid: {
+                                color: (ctx) => ctx.tick.value === 0 ? '#64748b' : '#e2e8f0',
+                                lineWidth: (ctx) => ctx.tick.value === 0 ? 2 : 1
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'f(x)'
+                            },
+                            grid: {
+                                color: (ctx) => ctx.tick.value === 0 ? '#64748b' : '#e2e8f0',
+                                lineWidth: (ctx) => ctx.tick.value === 0 ? 2 : 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Run calculation once on load to show the initial state (from the user's photo)
+        window.onload = () => {
+            calculateAndGraph();
+        };
+
+        // Add "Enter" key listener for input fields
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    calculateAndGraph();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
